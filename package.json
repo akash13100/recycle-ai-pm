@@ -1,5 +1,5 @@
 {
-  "name": "sites-project",
+  "name": "recycle-ai-pm",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -9,6 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "build:vercel": "next build",
+    "harness": "node scripts/decision-harness.mjs",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
