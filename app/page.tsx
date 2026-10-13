@@ -10,7 +10,8 @@ type CaseItem = {
   product: string;
   cadence: string;
   late: string;
-  value: string;
+  margin: number;
+  avoidedDiscount: number;
   action: string;
   confidence: number;
   tone: string;
@@ -18,12 +19,27 @@ type CaseItem = {
 };
 
 const cases: CaseItem[] = [
-  { id: 'priya', name: 'Priya Menon', initials: 'PM', product: 'House Blend · 500g', cadence: '32 days', late: '11 days late', value: '₹286', action: 'Send reorder link', confidence: 86, tone: 'indigo', status: 'review' },
-  { id: 'arjun', name: 'Arjun Rao', initials: 'AR', product: 'House Blend · 500g', cadence: '29 days', late: '7 days late', value: '₹0', action: 'Do nothing', confidence: 91, tone: 'green', status: 'safe' },
-  { id: 'meera', name: 'Meera Shah', initials: 'MS', product: 'Cold Brew Pack · 6', cadence: '45 days', late: '16 days late', value: '₹194', action: 'Reminder only', confidence: 79, tone: 'amber', status: 'review' },
-  { id: 'kabir', name: 'Kabir Singh', initials: 'KS', product: 'House Blend · 1kg', cadence: '38 days', late: '14 days late', value: '₹341', action: 'Offer 5% incentive', confidence: 74, tone: 'violet', status: 'review' },
-  { id: 'tara', name: 'Tara Iyer', initials: 'TI', product: 'House Blend · 500g', cadence: '31 days', late: '9 days late', value: '—', action: 'Experiment holdout', confidence: 82, tone: 'slate', status: 'holdout' },
+  { id: 'priya', name: 'Priya Menon', initials: 'PM', product: 'House Blend · 500g', cadence: '32 days', late: '11 days late', margin: 286, avoidedDiscount: 0, action: 'Send reorder link', confidence: 86, tone: 'indigo', status: 'review' },
+  { id: 'arjun', name: 'Arjun Rao', initials: 'AR', product: 'House Blend · 500g', cadence: '29 days', late: '7 days late', margin: 0, avoidedDiscount: 42, action: 'Do nothing', confidence: 91, tone: 'green', status: 'safe' },
+  { id: 'meera', name: 'Meera Shah', initials: 'MS', product: 'Cold Brew Pack · 6', cadence: '45 days', late: '16 days late', margin: 92, avoidedDiscount: 0, action: 'Reminder only', confidence: 79, tone: 'amber', status: 'review' },
+  { id: 'kabir', name: 'Kabir Singh', initials: 'KS', product: 'House Blend · 1kg', cadence: '38 days', late: '14 days late', margin: 247, avoidedDiscount: 0, action: 'Offer 5% incentive', confidence: 74, tone: 'violet', status: 'review' },
+  { id: 'tara', name: 'Tara Iyer', initials: 'TI', product: 'House Blend · 500g', cadence: '31 days', late: '9 days late', margin: 0, avoidedDiscount: 0, action: 'Experiment holdout', confidence: 82, tone: 'slate', status: 'holdout' },
 ];
+
+const formatRupees = (value: number) => `₹${value.toLocaleString('en-IN')}`;
+const approvalCases = cases.filter(item => item.status === 'review');
+const doNothingCases = cases.filter(item => item.status === 'safe');
+const actionEligibleCases = cases.filter(item => item.status !== 'holdout');
+const holdoutCases = cases.filter(item => item.status === 'holdout');
+const expectedMarginThisRun = approvalCases.reduce((sum, item) => sum + item.margin, 0);
+const avoidedDiscountSpend = cases.reduce((sum, item) => sum + item.avoidedDiscount, 0);
+const annualisedDemoSample = expectedMarginThisRun * 11;
+
+if (process.env.NODE_ENV !== 'production') {
+  console.assert(actionEligibleCases.length === approvalCases.length + doNothingCases.length, 'Queue counts must reconcile');
+  console.assert(cases.length === actionEligibleCases.length + holdoutCases.length, 'Sample counts must reconcile');
+  console.assert(expectedMarginThisRun === approvalCases.reduce((sum, item) => sum + item.margin, 0), 'Headline margin must equal approval rows');
+}
 
 const actionOptions = [
   { label: 'Do nothing', detail: 'Likely to reorder naturally', uplift: '0.0 pp', cost: '₹0', margin: '₹0', tone: 'neutral' },
@@ -44,7 +60,7 @@ function Sidebar({ screen, setScreen }: { screen: Screen; setScreen: (screen: Sc
       <div className="agent-badge"><span className="pulse" /> ReCycle Agent <small>AI</small></div>
       <p className="nav-label">WORKSPACE</p>
       <nav>
-        <button className={active === 'queue' ? 'active' : ''} onClick={() => setScreen('queue')}><span>⌁</span><i>Opportunity queue</i><b>14</b></button>
+        <button className={active === 'queue' ? 'active' : ''} onClick={() => setScreen('queue')}><span>⌁</span><i>Opportunity queue</i><b>{actionEligibleCases.length}</b></button>
         <button className={active === 'learning' ? 'active' : ''} onClick={() => setScreen('learning')}><span>↗</span><i>Learning lab</i></button>
         <button className={active === 'policies' ? 'active' : ''} onClick={() => setScreen('policies')}><span>⌘</span><i>Policies & safety</i></button>
         <button className={active === 'audit' ? 'active' : ''} onClick={() => setScreen('audit')}><span>≡</span><i>Audit log</i></button>
@@ -62,25 +78,25 @@ function Topbar({ screen, paused, setPaused }: { screen: Screen; paused: boolean
 
 function Queue({ onSelect, openFirst, onLearning }: { onSelect: (item: CaseItem) => void; openFirst: () => void; onLearning: () => void }) {
   const [filter, setFilter] = useState<'review'|'all'|'holdout'>('review');
-  const visibleCases = filter === 'all' ? cases : filter === 'holdout' ? cases.filter(item => item.status === 'holdout') : cases.filter(item => item.status !== 'holdout');
+  const visibleCases = filter === 'all' ? actionEligibleCases : filter === 'holdout' ? holdoutCases : approvalCases;
   return <div className="content">
     <div className="eyebrow">TODAY&apos;S REPEAT-REVENUE OPPORTUNITY</div>
-    <div className="title-row"><div><h1>Recover repeat revenue,<br/><em>without discounting everyone.</em></h1><p>ReCycle finds customers drifting past their own purchase rhythm, then chooses the action most likely to create an incremental reorder.</p></div><button className="primary" onClick={openFirst}>Review 6 decisions <span>→</span></button></div>
+    <div className="title-row"><div><h1>Recover repeat revenue,<br/><em>without discounting everyone.</em></h1><p>ReCycle finds customers drifting past their own purchase rhythm, then chooses the action most likely to create an incremental reorder.</p></div><button className="primary" onClick={openFirst}>Review {approvalCases.length} decisions <span>→</span></button></div>
     <div className="metrics">
-      <article><div className="metric-icon lavender">₹</div><span>Expected incremental margin</span><strong>₹8,420</strong><small>Across 14 eligible customers</small></article>
-      <article><div className="metric-icon blue">✓</div><span>Needs your approval</span><strong>6</strong><small>₹2,180 expected value</small></article>
-      <article><div className="metric-icon mint">◇</div><span>Protected from overspend</span><strong>₹1,960</strong><small>8 “do nothing” decisions</small></article>
-      <article><div className="metric-icon peach">◐</div><span>Experiment health</span><strong className="good">10% holdout</strong><small>Learning without guesswork</small></article>
+      <article><div className="metric-icon lavender">₹</div><span>Expected incremental margin · this run</span><strong>{formatRupees(expectedMarginThisRun)}</strong><small>Projected demo-sample annualised: {formatRupees(annualisedDemoSample)}</small></article>
+      <article><div className="metric-icon blue">✓</div><span>Needs your approval</span><strong>{approvalCases.length}</strong><small>of {actionEligibleCases.length} action-eligible customers</small></article>
+      <article><div className="metric-icon mint">◇</div><span>Discount avoided on sure-thing reorders</span><strong>{formatRupees(avoidedDiscountSpend)}</strong><small>{doNothingCases.length} “do nothing” decision</small></article>
+      <article><div className="metric-icon peach">◐</div><span>Experiment holdout</span><strong className="good">{holdoutCases.length} / {cases.length}</strong><small>{Math.round((holdoutCases.length / cases.length) * 100)}% of this synthetic sample</small></article>
     </div>
     <section className="queue-card">
-      <div className="section-head"><div><h2>Opportunity queue</h2><p>Ranked by expected incremental contribution margin</p></div><div className="filters"><button className={filter==='review'?'filter-active':''} onClick={()=>setFilter('review')}>Needs review · 6</button><button className={filter==='all'?'filter-active':''} onClick={()=>setFilter('all')}>All eligible · 14</button><button className={filter==='holdout'?'filter-active':''} onClick={()=>setFilter('holdout')}>Holdout · 2</button></div></div>
+      <div className="section-head"><div><h2>Opportunity queue</h2><p>Ranked by expected incremental contribution margin</p></div><div className="filters"><button className={filter==='review'?'filter-active':''} onClick={()=>setFilter('review')}>Needs review · {approvalCases.length}</button><button className={filter==='all'?'filter-active':''} onClick={()=>setFilter('all')}>All eligible · {actionEligibleCases.length}</button><button className={filter==='holdout'?'filter-active':''} onClick={()=>setFilter('holdout')}>Holdout · {holdoutCases.length}</button></div></div>
       <div className="table-head"><span>Customer</span><span>Purchase rhythm</span><span>Recommendation</span><span>Confidence</span><span>Expected margin</span><span /></div>
       {visibleCases.map((item) => <button key={item.id} className="case-row" onClick={() => onSelect(item)}>
         <span className="customer"><i>{item.initials}</i><span><strong>{item.name}</strong><small>{item.product}</small></span></span>
         <span className="rhythm"><strong>{item.cadence}</strong><small>{item.late}</small></span>
         <span><mark className={item.tone}>{item.action}</mark></span>
         <span className="confidence"><span><i style={{width: `${item.confidence}%`}} /></span>{item.confidence}%</span>
-        <span className="value"><strong>{item.value}</strong><small>{item.value === '—' ? 'protected control' : 'incremental'}</small></span>
+        <span className="value"><strong>{item.status === 'holdout' ? '—' : formatRupees(item.margin)}</strong><small>{item.status === 'holdout' ? 'protected control' : item.status === 'safe' ? 'no action cost' : 'incremental'}</small></span>
         <b className="chev">›</b>
       </button>)}
     </section>
@@ -138,7 +154,7 @@ function Detail({ item, onBack, onLearning }: { item: CaseItem; onBack: () => vo
       </div>
       <aside className="decision-rail">
         <section className="panel guard-panel"><div className="panel-head"><div><h2>Policy gate</h2><p>All money and messaging checks run in code</p></div></div>
-          {[['Consent signal present','WhatsApp opt-in · 12 Aug'],['Frequency cap','0 of 2 messages this month'],['Margin floor',`${option.margin} expected · ₹150 minimum`],['Discount bound',`${selected === 3 ? '5%' : '0%'} ≤ 5% maximum`],['Identity match','Verified phone + order history']].map(([a,b]) => <div className="guard" key={a}><span>✓</span><div><strong>{a}</strong><small>{b}</small></div></div>)}
+          {[['Consent signal present','WhatsApp opt-in · 12 Aug'],['Frequency cap','0 of 2 messages this month'],['Margin floor',selected === 0 ? 'Not applicable for no action' : `${option.margin} expected · ₹75 minimum`],['Discount bound',`${selected === 3 ? '5%' : '0%'} ≤ 5% maximum`],['Identity match','Verified phone + order history']].map(([a,b]) => <div className="guard" key={a}><span>✓</span><div><strong>{a}</strong><small>{b}</small></div></div>)}
           <div className="gate-result"><span>SAFE TO EXECUTE</span><strong>5 / 5 checks passed</strong></div>
         </section>
         <section className="panel decision-card"><span className="recommend-label">RECOMMENDED DECISION</span><h3>{option.label}</h3><p>{selected === 0 ? 'Natural reorder probability is high enough that contacting this customer would add cost without proven lift.' : 'Highest expected incremental contribution margin within merchant policy.'}</p><div className="decision-math"><span>Expected incremental margin</span><strong>{option.margin}</strong></div>
@@ -170,9 +186,9 @@ function Learning() {
 
 function Policies() {
   const [kill, setKill] = useState(false);
-  const [limits, setLimits] = useState(['5%','₹150','2 / month','10%','3']);
+  const [limits, setLimits] = useState(['5%','₹75','2 / month','10%','3']);
   const [toggles, setToggles] = useState([true,true,true,true]);
-  const limitOptions = [['5%','7%','10%'],['₹150','₹200','₹250'],['2 / month','1 / month','3 / month'],['10%','15%','20%'],['3','4','5']];
+  const limitOptions = [['5%','7%','10%'],['₹75','₹100','₹150'],['2 / month','1 / month','3 / month'],['10%','15%','20%'],['3','4','5']];
   const limitNames = ['Maximum discount','Minimum contribution margin','Messages per customer','Experiment holdout','Minimum captured orders'];
   const toggleNames = ['Require valid consent','Suppress opted-out customers','Abstain below 70% confidence','Human approval for discounts'];
   const rotateLimit = (index:number) => setLimits(current => current.map((value,i)=>i===index?limitOptions[index][(limitOptions[index].indexOf(value)+1)%limitOptions[index].length]:value));

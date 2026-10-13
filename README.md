@@ -115,7 +115,7 @@ Guardrails include opt-out/block rate, complaint rate, refund rate and contribut
 | Model confidence | 70% minimum | Abstain |
 | Contact frequency | 2 per month | Block until reset |
 | Maximum discount | 5% | Reject candidate action |
-| Contribution margin | ₹150 minimum | Reject candidate action |
+| Contribution margin | ₹75 minimum | Reject candidate action |
 | Experiment holdout | 10% | No intervention |
 | Global kill switch | Merchant-controlled | Stop pending actions |
 
