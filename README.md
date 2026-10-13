@@ -161,7 +161,7 @@ app/globals.css              Razorpay-inspired visual system and responsive layo
 scripts/decision-harness.mjs Executable deterministic policy scenarios
 docs/MODEL_AND_SAFETY.md     Model, economics, holdout and failure-mode specification
 docs/BUSINESS_CASE.md         Merchant economics, Razorpay value and counter-case
-docs/AI_BUILD_LOG.md         How AI accelerated research, decisions and implementation
+AI_BUILD_LOG.md              Human decisions, AI contributions and correction trail
 docs/DEMO_SCRIPT.md          90-second submission walkthrough
 vercel.json                  Vercel build configuration
 ```
