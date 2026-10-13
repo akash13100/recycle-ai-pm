@@ -1,8 +1,41 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import {
+  actionEligibleCases as importedActionEligibleCases,
+  annualisedDemoSample,
+  approvalCases as importedApprovalCases,
+  avoidedDiscountSpend,
+  cases as importedCases,
+  doNothingCases as importedDoNothingCases,
+  expectedMarginThisRun,
+  formatRupees,
+  formatUplift,
+  holdoutCases as importedHoldoutCases,
+} from '@/lib/recycle-data.mjs';
 
 type Screen = 'queue' | 'detail' | 'learning' | 'policies' | 'audit';
+type ActionKind = 'doNothing' | 'reminder' | 'link' | 'incentive';
+type ActionOption = {
+  kind: ActionKind;
+  label: string;
+  detail: string;
+  discountCostPaise: number;
+  totalCostRupees: number;
+  upliftTenths: number;
+  netMarginRupees: number;
+};
+type CustomerDetails = {
+  caseId: string;
+  days: number;
+  range: string;
+  amountRupees: number;
+  upi: string;
+  active: string;
+  baseline: string;
+  timelineLabels: string[];
+  reason: string;
+};
 type CaseItem = {
   id: string;
   name: string;
@@ -16,37 +49,16 @@ type CaseItem = {
   confidence: number;
   tone: string;
   status: 'review' | 'safe' | 'holdout';
+  actionOptions: ActionOption[];
+  recommendedAction: ActionKind;
+  details: CustomerDetails;
 };
 
-const cases: CaseItem[] = [
-  { id: 'priya', name: 'Priya Menon', initials: 'PM', product: 'House Blend · 500g', cadence: '32 days', late: '11 days late', margin: 286, avoidedDiscount: 0, action: 'Send reorder link', confidence: 86, tone: 'indigo', status: 'review' },
-  { id: 'arjun', name: 'Arjun Rao', initials: 'AR', product: 'House Blend · 500g', cadence: '29 days', late: '7 days late', margin: 0, avoidedDiscount: 42, action: 'Do nothing', confidence: 91, tone: 'green', status: 'safe' },
-  { id: 'meera', name: 'Meera Shah', initials: 'MS', product: 'Cold Brew Pack · 6', cadence: '45 days', late: '16 days late', margin: 92, avoidedDiscount: 0, action: 'Reminder only', confidence: 79, tone: 'amber', status: 'review' },
-  { id: 'kabir', name: 'Kabir Singh', initials: 'KS', product: 'House Blend · 1kg', cadence: '38 days', late: '14 days late', margin: 247, avoidedDiscount: 0, action: 'Offer 5% incentive', confidence: 74, tone: 'violet', status: 'review' },
-  { id: 'tara', name: 'Tara Iyer', initials: 'TI', product: 'House Blend · 500g', cadence: '31 days', late: '9 days late', margin: 0, avoidedDiscount: 0, action: 'Experiment holdout', confidence: 82, tone: 'slate', status: 'holdout' },
-];
-
-const formatRupees = (value: number) => `₹${value.toLocaleString('en-IN')}`;
-const approvalCases = cases.filter(item => item.status === 'review');
-const doNothingCases = cases.filter(item => item.status === 'safe');
-const actionEligibleCases = cases.filter(item => item.status !== 'holdout');
-const holdoutCases = cases.filter(item => item.status === 'holdout');
-const expectedMarginThisRun = approvalCases.reduce((sum, item) => sum + item.margin, 0);
-const avoidedDiscountSpend = cases.reduce((sum, item) => sum + item.avoidedDiscount, 0);
-const annualisedDemoSample = expectedMarginThisRun * 11;
-
-if (process.env.NODE_ENV !== 'production') {
-  console.assert(actionEligibleCases.length === approvalCases.length + doNothingCases.length, 'Queue counts must reconcile');
-  console.assert(cases.length === actionEligibleCases.length + holdoutCases.length, 'Sample counts must reconcile');
-  console.assert(expectedMarginThisRun === approvalCases.reduce((sum, item) => sum + item.margin, 0), 'Headline margin must equal approval rows');
-}
-
-const actionOptions = [
-  { label: 'Do nothing', detail: 'Likely to reorder naturally', uplift: '0.0 pp', cost: '₹0', margin: '₹0', tone: 'neutral' },
-  { label: 'Reminder only', detail: 'WhatsApp reminder, no link', uplift: '+7.2 pp', cost: '₹1', margin: '₹92', tone: 'neutral' },
-  { label: 'One-tap reorder link', detail: 'Same product, no discount', uplift: '+18.4 pp', cost: '₹3', margin: '₹286', tone: 'recommended' },
-  { label: '5% incentive', detail: 'Discount bounded at ₹42', uplift: '+20.1 pp', cost: '₹45', margin: '₹247', tone: 'neutral' },
-];
+const cases = importedCases as CaseItem[];
+const approvalCases = importedApprovalCases as CaseItem[];
+const doNothingCases = importedDoNothingCases as CaseItem[];
+const actionEligibleCases = importedActionEligibleCases as CaseItem[];
+const holdoutCases = importedHoldoutCases as CaseItem[];
 
 function Logo() {
   return <div className="brand"><span className="brand-mark">R</span><span>razorpay</span></div>;
@@ -105,7 +117,8 @@ function Queue({ onSelect, openFirst, onLearning }: { onSelect: (item: CaseItem)
 }
 
 function Detail({ item, onBack, onLearning }: { item: CaseItem; onBack: () => void; onLearning: () => void }) {
-  const recommendedIndex = item.id === 'arjun' ? 0 : item.id === 'meera' ? 1 : item.id === 'kabir' ? 3 : 2;
+  const actionOptions = item.actionOptions;
+  const recommendedIndex = actionOptions.findIndex((option) => option.kind === item.recommendedAction);
   const [selected, setSelected] = useState(recommendedIndex);
   const [approved, setApproved] = useState(false);
   const [excluded, setExcluded] = useState(false);
@@ -114,13 +127,7 @@ function Detail({ item, onBack, onLearning }: { item: CaseItem; onBack: () => vo
   const [messageAlt, setMessageAlt] = useState(false);
   const option = actionOptions[selected];
   const firstName = item.name.split(' ')[0];
-  const customerData: Record<string, { caseId: string; days: number; range: string; amount: string; upi: string; active: string; baseline: string }> = {
-    priya: { caseId: '1048', days: 43, range: '28–36', amount: '₹849', upi: 'priya@okhdfcbank', active: '82%', baseline: '34%' },
-    arjun: { caseId: '1049', days: 36, range: '26–33', amount: '₹849', upi: 'arjun@okaxis', active: '91%', baseline: '61%' },
-    meera: { caseId: '1050', days: 61, range: '40–50', amount: '₹699', upi: 'meera@okicici', active: '77%', baseline: '29%' },
-    kabir: { caseId: '1051', days: 52, range: '34–42', amount: '₹1,599', upi: 'kabir@okaxis', active: '74%', baseline: '21%' },
-  };
-  const data = customerData[item.id] || customerData.priya;
+  const data = item.details;
   const productWords = item.product.replace(' · ', ' ');
   const paymentLink = `rzp.io/r/sleepybean-${item.id}`;
   const draftMessage = selected === 1
@@ -134,36 +141,36 @@ function Detail({ item, onBack, onLearning }: { item: CaseItem; onBack: () => vo
   if (item.status === 'holdout') return <HoldoutDetail item={item} onBack={onBack} onLearning={onLearning} />;
   return <div className="content detail-content">
     <button className="back" onClick={onBack}>← Back to queue</button>
-    <div className="detail-title"><div className="big-avatar">{item.initials}</div><div><div className="eyebrow">CUSTOMER DECISION · RC-{data.caseId}</div><h1>{item.name}</h1><p>{item.product} · Customer since Aug 2025 · 6 captured orders</p></div><div className="decision-value"><span>Expected incremental margin</span><strong>{option.margin}</strong><small>{option.label}</small></div></div>
+    <div className="detail-title"><div className="big-avatar">{item.initials}</div><div><div className="eyebrow">CUSTOMER DECISION · RC-{data.caseId}</div><h1>{item.name}</h1><p>{item.product} · Customer since Aug 2025 · 6 captured orders</p></div><div className="decision-value"><span>Expected incremental margin</span><strong>{formatRupees(option.netMarginRupees)}</strong><small>{option.label}</small></div></div>
     <div className="detail-grid">
       <div className="detail-main">
         <section className="panel rhythm-panel">
           <div className="panel-head"><div><h2>Purchase rhythm</h2><p>Observed payments linked by verified contact</p></div><span className="model-tag">BTYD-assisted</span></div>
-          <div className="timeline-chart"><div className="axis"><span>12 Jan</span><span>13 Feb</span><span>16 Mar</span><span>17 Apr</span><span>19 May</span><span>Today</span></div><div className="timeline"><span className="order-dot"/><i/><span className="order-dot"/><i/><span className="order-dot"/><i/><span className="order-dot"/><i/><span className="order-dot"/><i className="late-line"/><span className="today-dot">{data.days}d</span></div></div>
-          <div className="explain-box"><span className="spark">✦</span><p><strong>Why this customer surfaced</strong>{firstName} usually repurchases every {data.range} days. It has been {data.days} days. ReCycle recommends <b>{actionOptions[recommendedIndex].label.toLowerCase()}</b> because it has the highest expected incremental margin within policy.</p></div>
+          <div className="timeline-chart"><div className="axis">{data.timelineLabels.map((label) => <span key={label}>{label}</span>)}</div><div className="timeline"><span className="order-dot"/><i/><span className="order-dot"/><i/><span className="order-dot"/><i/><span className="order-dot"/><i/><span className="order-dot"/><i className="late-line"/><span className="today-dot">{data.days}d</span></div></div>
+          <div className="explain-box"><span className="spark">✦</span><p><strong>Why this customer surfaced</strong>{firstName} usually repurchases every {data.range} days. It has been {data.days} days. {data.reason} ReCycle recommends <b>{actionOptions[recommendedIndex].label.toLowerCase()}</b> because it has the highest expected incremental margin within policy.</p></div>
           <div className="model-stats"><div><span>Active-customer probability</span><strong>{data.active}</strong></div><div><span>Baseline 7-day reorder</span><strong>{data.baseline}</strong></div><div><span>Identity confidence</span><strong>Verified</strong></div></div>
         </section>
         <section className="panel action-panel">
           <div className="panel-head"><div><h2>Choose an action</h2><p>Expected value after action cost and contribution margin</p></div><span className="calc-tag">Math in deterministic code</span></div>
           <div className="option-head"><span>Action</span><span>Incremental uplift</span><span>Cost</span><span>Net margin</span></div>
           {actionOptions.map((action, index) => <button key={action.label} className={`action-option ${selected === index ? 'selected' : ''}`} onClick={() => { setSelected(index); setApproved(false); }}>
-            <span className="radio"><i /></span><span className="action-name"><strong>{action.label}</strong><small>{action.detail}</small></span><span>{action.uplift}</span><span>{action.cost}</span><span className="margin-num">{action.margin}</span>{index === recommendedIndex && <mark>Recommended</mark>}
+            <span className="radio"><i /></span><span className="action-name"><strong>{action.label}</strong><small>{action.kind === 'incentive' ? `Discount bounded at ${formatRupees(Math.round(action.discountCostPaise / 100))}` : action.detail}</small></span><span>{formatUplift(action.upliftTenths)}</span><span>{formatRupees(action.totalCostRupees)}</span><span className="margin-num">{formatRupees(action.netMarginRupees)}</span>{index === recommendedIndex && <mark>Recommended</mark>}
           </button>)}
         </section>
         <section className="panel message-panel"><div className="panel-head"><div><h2>Customer message</h2><p>{selected === 0 ? 'No outreach for this decision' : 'AI-drafted; merchant editable before approval'}</p></div>{selected !== 0 && <button className="text-button" onClick={()=>setMessageAlt(!messageAlt)}>{messageAlt?'Use original':'Regenerate'}</button>}</div><div className="message-preview"><div className="wa">{selected === 0 ? '—' : '⌁'}</div><p>{selected === 0 ? <>No customer message will be sent. ReCycle will observe whether {firstName} reorders naturally.</> : <>{messageAlt ? alternateMessage : draftMessage} {selected >= 2 && <b>{paymentLink}</b>}<small>Reply STOP to opt out.</small></>}</p></div></section>
       </div>
       <aside className="decision-rail">
         <section className="panel guard-panel"><div className="panel-head"><div><h2>Policy gate</h2><p>All money and messaging checks run in code</p></div></div>
-          {[['Consent signal present','WhatsApp opt-in · 12 Aug'],['Frequency cap','0 of 2 messages this month'],['Margin floor',selected === 0 ? 'Not applicable for no action' : `${option.margin} expected · ₹75 minimum`],['Discount bound',`${selected === 3 ? '5%' : '0%'} ≤ 5% maximum`],['Identity match','Verified phone + order history']].map(([a,b]) => <div className="guard" key={a}><span>✓</span><div><strong>{a}</strong><small>{b}</small></div></div>)}
+          {[['Consent signal present','WhatsApp opt-in · 12 Aug'],['Frequency cap','0 of 2 messages this month'],['Margin floor',selected === 0 ? 'Not applicable for no action' : `${formatRupees(option.netMarginRupees)} expected · ₹75 minimum`],['Discount bound',`${selected === 3 ? '5%' : '0%'} ≤ 5% maximum`],['Identity match','Verified phone + order history']].map(([a,b]) => <div className="guard" key={a}><span>✓</span><div><strong>{a}</strong><small>{b}</small></div></div>)}
           <div className="gate-result"><span>SAFE TO EXECUTE</span><strong>5 / 5 checks passed</strong></div>
         </section>
-        <section className="panel decision-card"><span className="recommend-label">RECOMMENDED DECISION</span><h3>{option.label}</h3><p>{selected === 0 ? 'Natural reorder probability is high enough that contacting this customer would add cost without proven lift.' : 'Highest expected incremental contribution margin within merchant policy.'}</p><div className="decision-math"><span>Expected incremental margin</span><strong>{option.margin}</strong></div>
+        <section className="panel decision-card"><span className="recommend-label">RECOMMENDED DECISION</span><h3>{option.label}</h3><p>{selected === 0 ? 'Natural reorder probability is high enough that contacting this customer would add cost without proven lift.' : 'Highest expected incremental contribution margin within merchant policy.'}</p><div className="decision-math"><span>Expected incremental margin</span><strong>{formatRupees(option.netMarginRupees)}</strong></div>
           {excluded ? <div className="approved-state stop-state"><span>⊘</span><div><strong>Customer excluded</strong><small>No future ReCycle messages</small></div></div> : snoozed ? <div className="approved-state"><span>◷</span><div><strong>Snoozed for 7 days</strong><small>Decision will be rescored on return</small></div></div> : approved ? <><div className="approved-state"><span>✓</span><div><strong>Action approved</strong><small>{selected >= 2 ? `Test link created · Audit #${data.caseId}` : `Decision recorded · Audit #${data.caseId}`}</small></div></div>{selected>=2&&<button className="checkout-button" onClick={()=>setCheckout(true)}>Open Razorpay test checkout ↗</button>}</> : <button className="primary full" onClick={() => setApproved(true)}>{selected === 0 ? 'Approve “Do nothing”' : selected === 1 ? 'Approve reminder' : 'Approve & create test link'} <span>→</span></button>}
           <div className="secondary-actions">{selected !== 0 && <button onClick={()=>setMessageAlt(true)}>Edit copy</button>}<button onClick={() => setSnoozed(true)}>Snooze 7d</button><button onClick={() => setExcluded(true)}>Exclude</button></div>
         </section>
         <div className="tiny-note"><span>◐</span><p><strong>Not in holdout</strong>This customer is eligible for treatment. Allocation was fixed before scoring.</p></div>
       </aside>
-    </div>{checkout&&<div className="modal-backdrop" onClick={()=>setCheckout(false)}><div className="checkout-modal" onClick={event=>event.stopPropagation()}><div className="checkout-top"><Logo/><span>TEST MODE</span></div><button className="modal-close" onClick={()=>setCheckout(false)}>×</button><p>Payment request from</p><h2>Sleepy Bean Coffee</h2><div className="checkout-product"><div><strong>{item.product}</strong><small>One-time reorder</small></div><b>{data.amount}</b></div><div className="checkout-field"><span>UPI ID</span><strong>{data.upi}</strong></div><button className="pay-button" onClick={()=>setCheckout(false)}>Pay {data.amount} in test mode</button><small className="checkout-note">No money will move. This previews the Razorpay Payment Link execution step.</small></div></div>}
+    </div>{checkout&&<div className="modal-backdrop" onClick={()=>setCheckout(false)}><div className="checkout-modal" onClick={event=>event.stopPropagation()}><div className="checkout-top"><Logo/><span>TEST MODE</span></div><button className="modal-close" onClick={()=>setCheckout(false)}>×</button><p>Payment request from</p><h2>Sleepy Bean Coffee</h2><div className="checkout-product"><div><strong>{item.product}</strong><small>One-time reorder</small></div><b>{formatRupees(data.amountRupees)}</b></div><div className="checkout-field"><span>UPI ID</span><strong>{data.upi}</strong></div><button className="pay-button" onClick={()=>setCheckout(false)}>Pay {formatRupees(data.amountRupees)} in test mode</button><small className="checkout-note">No money will move. This previews the Razorpay Payment Link execution step.</small></div></div>}
   </div>;
 }
 
