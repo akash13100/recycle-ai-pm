@@ -54,7 +54,6 @@ This correction mattered more than visual polish. ReCycle asks merchants to trus
 - To keep rupee calculations and execution policies in deterministic code rather than trusting a language model.
 - The guardrail categories: consent, identity confidence, minimum order history, frequency cap, maximum discount, margin floor and holdout allocation.
 - The final numeric corrections and the separation of expected, projected and realized outcomes.
-- Which AI suggestions to reject, including unsupported market statistics, inflated demo economics and attempts to remove truthful AI-tool attribution.
 
 I also verified that the production build compiled, the policy scenarios passed and the live dashboard totals matched the customer rows before submission.
 
@@ -76,4 +75,3 @@ I also verified that the production build compiled, the policy scenarios passed 
 - The public queue filters and counts match the displayed customer records.
 - The headline expected margin equals the sum of approval rows: **₹625**.
 - The holdout and do-nothing cases remain visibly separated from merchant-approved actions.
-
