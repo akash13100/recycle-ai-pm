@@ -4,7 +4,7 @@ ReCycle is an AI-native decision experience for replenishable D2C brands. It ide
 
 > This repository is a product prototype built for Razorpay's **Recover and Grow with AI** track. All merchants, customers, probabilities, uplift values and financial outcomes are synthetic. The checkout is test-only and no money or customer message is sent.
 
-**Live prototype:** https://recycle-ai-pm.sappycabin64.chatgpt.site/
+**Live prototype:** https://recycle-ai-pm.vercel.app/
 
 ## Why this exists
 
